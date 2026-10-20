@@ -1,0 +1,55 @@
+name: Export Notion documentation
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 17 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: notion-export
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: python setup
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: install dependencies
+        run: python -m pip install 'notion-git-sync @ git+https://github.com/Aiizon/notion-git-sync.git@a5d4961fb215eb69319aed114e82942b13e27c74'
+
+      - name: export
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_PARENT_ID: ${{ secrets.NOTION_PARENT_ID }}
+        run: python scripts/export_notion.py
+
+      - name: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          git config --local user.name github-actions
+          git config --local user.email github-actions@github.com
+          
+          git add -- docs/notion/
+          
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          git commit -m "Notion documentation sync $(date +'%Y-%m-%d')"
+          git push origin "HEAD:${{ github.event.repository.default_branch }}"
